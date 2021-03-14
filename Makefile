@@ -3,7 +3,7 @@
 # their type, while the Arduino IDE does not open the .cpp file as well
 # (it already has this file open as the ino file).
 HEADERS = $(wildcard *.h bogo/*.h)
-OBJECTS = pe32me162ir_pub.o bogo/Arduino.o bogo/WString.o
+OBJECTS = pe32me162ir_pub.o PingMon.o bogo/Arduino.o bogo/WString.o
 
 # --- Arduino Uno AVR (8-bit RISC, by Atmel) ---
 # /snap/arduino/current/hardware/arduino/avr/boards.txt:

@@ -63,7 +63,7 @@ const int PIN_IR_RX = 9;        // digital pin 9
 const int PIN_IR_TX = 10;       // digital pin 10
 #endif
 
-//#define OPTIONAL_LIGHT_SENSOR
+/* You can #define OPTIONAL_LIGHT_SENSOR in config.h */
 #ifdef OPTIONAL_LIGHT_SENSOR
 /* Optionally, you may attach a light sensor diode (or photo transistor
  * or whatever) to analog pin A0 and have it monitor the red watt hour
@@ -112,7 +112,15 @@ const char mqtt_topic[] = "some/topic";
 # include <ESP8266WiFi.h>
 #endif
 
-#define VERSION "v2"
+/* You can #define OPTIONAL_PINGMON in config.h
+ * You will then also need these:
+ * const char pingmon_whatsmyip_url[] = "http://ifconfig.co";
+ * const char pingmon_host0[] = "example.com"; // optional */
+#ifdef OPTIONAL_PINGMON
+# include "PingMon.h"
+#endif
+
+#define VERSION "v3~pre1"
 
 
 enum State {
@@ -211,6 +219,15 @@ static void on_response(const char *data, size_t end, Obis obis);
 
 static void publish();
 
+#ifdef OPTIONAL_PINGMON
+static void pingmon_init();
+static void pingmon_update();
+static void pingmon_publish();
+static String pingmon_whats_my_ip();
+static String pingmon_whats_my_ext_gateway();
+static String pingmon_whats_my_int_gateway();
+#endif
+
 /* ASCII control codes */
 const char C_SOH = '\x01';
 #define    S_SOH   "\x01"
@@ -274,6 +291,10 @@ Obis next_obis;
 EnergyGauge gauge; /* feed it 1.8.0 and 2.8.0, get 1.7.0 and 2.7.0 */
 long last_publish;
 
+#ifdef OPTIONAL_PINGMON
+static PingMon pingmon;
+#endif
+
 
 void setup()
 {
@@ -306,6 +327,10 @@ void setup()
   // Initial values
   state = next_state = STATE_WR_LOGIN;
   last_statechange = last_publish = millis();
+
+#ifdef OPTIONAL_PINGMON
+  pingmon_init();
+#endif
 }
 
 void loop()
@@ -484,6 +509,11 @@ void loop()
             (tdelta_s >= 60 && !(-400 < power && power < 400)) ||
             (tdelta_s >= 25 && gauge.has_significant_change())) {
         publish();
+        // FIXME: This publish should not happen here. Let it
+        // auto-publish instead through update() when it deems it
+        // necessary. Right now it pushes the pingmon data at illogical
+        // times (and too often).
+        pingmon_publish();
         gauge.reset();
 #ifdef OPTIONAL_LIGHT_SENSOR
         pulse_low = 1023;
@@ -497,6 +527,13 @@ void loop()
 
   /* Continuous: just sleep a slight bit */
   case STATE_SLEEP:
+#ifdef OPTIONAL_PINGMON
+    /* This is SLOW. It takes up up to 1500ms because it waits for the
+     * ping response as well (for up to 1000ms). Note that it generally
+     * is a lot quicker, especially when it concludes that no work has
+     * to be done. */
+    pingmon_update();
+#endif
 #ifdef OPTIONAL_LIGHT_SENSOR
     /* This is a mashup between simply doing the poll-for-new-totals
      * every second, and only-a-poll-after-pulse:
@@ -973,6 +1010,125 @@ static void parse_data_readout(struct obis_values_t *dst, const char *src)
   }
 }
 
+
+#ifdef OPTIONAL_PINGMON
+static void pingmon_init()
+{
+  pingmon.addTarget("dns.cfl", "1.1.1.1");
+  pingmon.addTarget("dns.ggl", "8.8.8.8");
+  pingmon.addTarget("ip.ext", pingmon_whats_my_ip);
+  pingmon.addTarget("gw.ext", pingmon_whats_my_ext_gateway);
+  pingmon.addTarget("gw.int", pingmon_whats_my_int_gateway);
+  if (pingmon_host0) {
+    pingmon.addTarget("host.0", pingmon_host0);
+  }
+}
+
+static void pingmon_update()
+{
+  pingmon.update();
+}
+
+static void pingmon_publish()
+{
+  ensure_wifi();
+  ensure_mqtt();
+
+#ifdef HAVE_MQTT
+  // Use simple application/x-www-form-urlencoded format.
+  mqttClient.beginMessage(mqtt_topic);
+  mqttClient.print("device_id=");
+  mqttClient.print(guid);
+#endif
+
+  for (unsigned i = 0; i < pingmon.getTargetCount(); ++i) {
+    PingTarget& tgt = pingmon.getTarget(i);
+    const PingStats& st = tgt.getStats();
+    Serial.print(F("pushing ping: "));
+    Serial.print(tgt.getId());
+    Serial.print(F("="));
+    Serial.print(st.responseTimeMs);
+    if (st.loss) {
+      Serial.print(F("/"));
+      Serial.print((unsigned)st.loss);
+    }
+    Serial.println();
+#ifdef HAVE_MQTT
+    mqttClient.print("&ping.");
+    mqttClient.print(tgt.getId());
+    mqttClient.print("=");
+    mqttClient.print(st.responseTimeMs);
+    if (st.loss) {
+      mqttClient.print("/");
+      mqttClient.print((unsigned)st.loss);
+    }
+#endif
+  }
+
+#ifdef HAVE_MQTT
+  mqttClient.endMessage();
+#endif
+}
+
+/**
+ * Return 111.222.33.44 if that's my external IP.
+ */
+static String pingmon_whats_my_ip()
+{
+    static String ret;
+    static long lastMs = 0;
+    const long cacheFor = (15 * 60 * 1000); // 15 minutes
+
+    if (lastMs == 0 || (millis() - lastMs) > cacheFor) {
+#ifdef HAVE_HTTPCLIENT
+        HTTPClient http;
+        http.begin(pingmon_whatsmyip_url);
+        int httpCode = http.GET();
+        if (httpCode >= 200 && httpCode < 300) {
+            String body = http.getString();
+            body.trim();
+            if (body.length()) {
+                ret = body;
+            }
+        }
+        http.end();
+#else
+        ret = "111.222.33.44";
+#endif
+        lastMs = millis();
+    }
+    return ret;
+}
+
+/**
+ * If whats_my_ip is 111.222.33.44, then whats_my_ext_gateway is
+ * 111.222.33.1.
+ */
+static String pingmon_whats_my_ext_gateway()
+{
+    String ret = pingmon_whats_my_ip();
+    int pos = ret.lastIndexOf('.'); // take last '.'
+    if (pos > 0) {
+        ret.remove(pos + 1);
+        ret += "1"; // append "1", assume the gateway is at "x.x.x.1"
+    }
+    return ret;
+}
+
+/**
+ * HACKS: assume there's a WiFi object floating around.
+ */
+static String pingmon_whats_my_int_gateway()
+{
+#ifdef HAVE_MQTT
+    return WiFi.gatewayIP().toString();
+#else
+    return "192.168.1.1";
+#endif
+}
+#endif //OPTIONAL_PINGMON
+
+
 #ifdef TEST_BUILD
 static int STR_EQ(const char *func, const char *got, const char *expected)
 {
@@ -1095,6 +1251,8 @@ int main()
 //  printf("%ld - %ld - %ld\n",
 //    lastValue[OBIS_1_8_0], deltaValue[OBIS_1_8_0], deltaTime[OBIS_1_8_0]);
   publish();
+  pingmon_init();
+  pingmon_publish();
   return 0;
 }
 
