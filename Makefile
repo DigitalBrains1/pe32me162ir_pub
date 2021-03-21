@@ -6,7 +6,8 @@ HEADERS = $(wildcard *.h bogoduino/*.h)
 LIBS = ../../libraries/pe32ping_mod
 OBJECTS = pe32me162ir_pub.o \
 	  bogoduino/Arduino.o bogoduino/WString.o \
-	  ../../libraries/pe32ping_mod/PingMon.o
+	  ../../libraries/pe32ping_mod/PingMon.o \
+	  ../../libraries/pe32ping_mod/PingMonUtil.o
 
 # --- Arduino Uno AVR (8-bit RISC, by Atmel) ---
 # /snap/arduino/current/hardware/arduino/avr/boards.txt:
