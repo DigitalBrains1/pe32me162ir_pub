@@ -120,7 +120,7 @@ const char mqtt_topic[] = "some/topic";
 # include "PingMon.h"
 #endif
 
-#define VERSION "v3~pre1"
+#define VERSION "v3~pre2"
 
 
 enum State {

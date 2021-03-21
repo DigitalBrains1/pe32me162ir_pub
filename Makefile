@@ -3,7 +3,10 @@
 # their type, while the Arduino IDE does not open the .cpp file as well
 # (it already has this file open as the ino file).
 HEADERS = $(wildcard *.h bogoduino/*.h)
-OBJECTS = pe32me162ir_pub.o PingMon.o bogoduino/Arduino.o bogoduino/WString.o
+LIBS = ../../libraries/pe32ping_mod
+OBJECTS = pe32me162ir_pub.o \
+	  bogoduino/Arduino.o bogoduino/WString.o \
+	  ../../libraries/pe32ping_mod/PingMon.o
 
 # --- Arduino Uno AVR (8-bit RISC, by Atmel) ---
 # /snap/arduino/current/hardware/arduino/avr/boards.txt:
@@ -29,7 +32,7 @@ OBJECTS = pe32me162ir_pub.o PingMon.o bogoduino/Arduino.o bogoduino/WString.o
 
 # --- Test mode ---
 CXX = g++
-CPPFLAGS = -DTEST_BUILD -g -I./bogoduino
+CPPFLAGS = -DTEST_BUILD -g -I./bogoduino -I../../libraries/pe32ping_mod
 CXXFLAGS = -Wall -Os -fdata-sections -ffunction-sections
 LDFLAGS = -Wl,--gc-sections # -s(trip)
 
