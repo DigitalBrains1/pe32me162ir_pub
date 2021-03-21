@@ -2,8 +2,8 @@
 # to the more common .cpp) because g++ and make will correctly guess
 # their type, while the Arduino IDE does not open the .cpp file as well
 # (it already has this file open as the ino file).
-HEADERS = $(wildcard *.h bogo/*.h)
-OBJECTS = pe32me162ir_pub.o PingMon.o bogo/Arduino.o bogo/WString.o
+HEADERS = $(wildcard *.h bogoduino/*.h)
+OBJECTS = pe32me162ir_pub.o PingMon.o bogoduino/Arduino.o bogoduino/WString.o
 
 # --- Arduino Uno AVR (8-bit RISC, by Atmel) ---
 # /snap/arduino/current/hardware/arduino/avr/boards.txt:
@@ -29,7 +29,7 @@ OBJECTS = pe32me162ir_pub.o PingMon.o bogo/Arduino.o bogo/WString.o
 
 # --- Test mode ---
 CXX = g++
-CPPFLAGS = -DTEST_BUILD -g -I./bogo
+CPPFLAGS = -DTEST_BUILD -g -I./bogoduino
 CXXFLAGS = -Wall -Os -fdata-sections -ffunction-sections
 LDFLAGS = -Wl,--gc-sections # -s(trip)
 
